@@ -11,29 +11,31 @@ import kotlin.reflect.KClass
 /**
  * @author Boston Vanseghi
  */
-class SWRRestAction<T: Any>(
+class SWRRestAction<I, O: Any>(
     override val method: HttpMethod = HttpMethod.GET,
-    override val client: RestClient,
+    override val client: RestClient<I>,
+    override val body: Any? = null,
     override val requestParameters: Map<String, String> = emptyMap(),
     override val headers: Map<String, String> = emptyMap(),
     private val refreshIntervalMillis: Long = 0L,
-    override val kClass: KClass<T>
-): DefaultRestAction<T>(method, client, requestParameters, headers, kClass) {
+    override val kClass: KClass<O>
+): DefaultRestAction<I, O>(method, client, body, requestParameters, headers, kClass) {
 
     companion object {
-        inline operator fun <reified T: Any> invoke(
+        inline operator fun <I, reified O: Any> invoke(
             method: HttpMethod = HttpMethod.GET,
-            client: RestClient,
+            client: RestClient<I>,
+            body: Any? = null,
             requestParameters: Map<String, String> = emptyMap(),
             headers: Map<String, String> = emptyMap(),
             refreshIntervalMillis: Long = 0L,
-        ): SWRRestAction<T> = SWRRestAction(
-            method, client, requestParameters, headers, refreshIntervalMillis, T::class
+        ): SWRRestAction<I, O> = SWRRestAction(
+            method, client, body, requestParameters, headers, refreshIntervalMillis, O::class
         )
     }
 
     @Volatile
-    var data: T? = null
+    var data: O? = null
         set(value) {
             lastUpdateTimeMillis = System.currentTimeMillis()
             field = value
@@ -51,12 +53,12 @@ class SWRRestAction<T: Any>(
     private val hasData: Boolean
         get() = data != null
 
-    override fun onDataTransformed(data: T) {
+    override fun onDataTransformed(data: O) {
         this.data = data
         super.onDataTransformed(data)
     }
 
-    override fun block(endpoint: Endpoint): Either<RestActionFailure, T> {
+    override fun block(endpoint: Endpoint): Either<RestActionFailure, O> {
         return if (hasData && !shouldUpdate) {
             try {
                 val successObject = data!!
@@ -72,7 +74,7 @@ class SWRRestAction<T: Any>(
         }
     }
 
-    override fun async(endpoint: Endpoint, callback: (Either<RestActionFailure, T>) -> Unit) {
+    override fun async(endpoint: Endpoint, callback: (Either<RestActionFailure, O>) -> Unit) {
         if (hasData && !shouldUpdate) {
             try {
                 val successObject = data!!

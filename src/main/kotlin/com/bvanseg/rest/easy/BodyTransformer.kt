@@ -1,12 +1,12 @@
 package com.bvanseg.rest.easy
 
-import java.net.http.HttpResponse
+import com.bvanseg.rest.easy.response.RestResponse
 import kotlin.reflect.KClass
 
 /**
  * @author Boston Vanseghi
  */
-interface BodyTransformer {
-    fun <R: Any> read(response: HttpResponse<String>, kclass: KClass<R>): R
-    fun <R> write(input: R): String
+interface BodyTransformer<I> {
+    fun <O: Any> read(response: RestResponse<I>, kclass: KClass<O>): O
+    fun <O> write(input: O): String
 }

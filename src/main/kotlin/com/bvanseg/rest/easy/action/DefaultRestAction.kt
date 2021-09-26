@@ -5,12 +5,12 @@ import arrow.core.getOrHandle
 import com.bvanseg.rest.easy.HttpMethod
 import com.bvanseg.rest.easy.client.RestClient
 import com.bvanseg.rest.easy.endpoint.Endpoint
+import com.bvanseg.rest.easy.request.RestRequest
+import com.bvanseg.rest.easy.response.RestResponse
 import com.bvanseg.rest.easy.result.ResponseFailure
 import com.bvanseg.rest.easy.result.RestActionFailure
 import com.bvanseg.rest.easy.result.ThrowableFailure
 import java.net.URI
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.atomic.AtomicBoolean
@@ -19,73 +19,95 @@ import kotlin.reflect.KClass
 /**
  * @author Boston Vanseghi
  */
-open class DefaultRestAction<T: Any>(
+open class DefaultRestAction<I, O: Any>(
     override val method: HttpMethod = HttpMethod.GET,
-    override val client: RestClient,
+    override val client: RestClient<I>,
+    override val body: Any? = null,
     override val requestParameters: Map<String, String> = emptyMap(),
     override val headers: Map<String, String> = emptyMap(),
-    override val kClass: KClass<T>
-): RestAction<T> {
+    override val kClass: KClass<O>
+): RestAction<O> {
 
     companion object {
-        inline operator fun <reified T: Any> invoke(
+        inline operator fun <I, reified O: Any> invoke(
             method: HttpMethod = HttpMethod.GET,
-            client: RestClient,
+            client: RestClient<I>,
+            body: Any? = null,
             requestParameters: Map<String, String> = emptyMap(),
             headers: Map<String, String> = emptyMap(),
-        ): DefaultRestAction<T> = DefaultRestAction(
-            method, client, requestParameters, headers, T::class
+        ): DefaultRestAction<I, O> = DefaultRestAction(
+            method = method,
+            client = client,
+            body = body,
+            requestParameters = requestParameters,
+            headers = headers,
+            kClass = O::class
         )
 
-        inline operator fun <reified T: Any> invoke(
+        inline operator fun <I, reified O: Any> invoke(
+            client: RestClient<I>,
             action: RestAction<*>
-        ): DefaultRestAction<T> = DefaultRestAction(
-            action.method, action.client, action.requestParameters, action.headers, T::class
+        ): DefaultRestAction<I, O> = DefaultRestAction(
+            method = action.method,
+            client = client,
+            body = action.body,
+            requestParameters = action.requestParameters,
+            headers = action.headers,
+            kClass = O::class
         )
     }
 
-    constructor(action: RestAction<T>):
-            this(action.method, action.client, action.requestParameters, action.headers, action.kClass)
+    constructor(
+        client: RestClient<I>,
+        action: RestAction<O>
+    ): this(
+        method = action.method,
+        client = client,
+        body = action.body,
+        requestParameters = action.requestParameters,
+        headers = action.headers,
+        kClass = action.kClass
+    )
 
     private val requestQuery: String
         get() = "?" + requestParameters.entries.joinToString("&")
 
-    protected val eitherCallbackDeque by lazy { ConcurrentLinkedDeque<(Either<RestActionFailure, T>) -> Unit>() }
+    protected val eitherCallbackDeque by lazy { ConcurrentLinkedDeque<(Either<RestActionFailure, O>) -> Unit>() }
     protected val failureCallbackDeque by lazy { ConcurrentLinkedDeque<(RestActionFailure) -> Unit>() }
-    protected val responseCallbackDeque by lazy { ConcurrentLinkedDeque<(HttpResponse<String>) -> Unit>() }
-    protected val successCallbackDeque by lazy { ConcurrentLinkedDeque<(T) -> Unit>() }
+    protected val responseCallbackDeque by lazy { ConcurrentLinkedDeque<(RestResponse<*>) -> Unit>() }
+    protected val successCallbackDeque by lazy { ConcurrentLinkedDeque<(O) -> Unit>() }
 
     protected val isRequestSending = AtomicBoolean(false)
 
-    fun onFailure(callback: (RestActionFailure) -> Unit): DefaultRestAction<T> = this.apply {
+    fun onFailure(callback: (RestActionFailure) -> Unit): DefaultRestAction<I, O> = this.apply {
         failureCallbackDeque.add(callback)
     }
 
-    fun onSuccess(callback: (T) -> Unit): DefaultRestAction<T> = this.apply {
+    fun onSuccess(callback: (O) -> Unit): DefaultRestAction<I, O> = this.apply {
         successCallbackDeque.add(callback)
     }
 
-    protected open fun onResponse(response: HttpResponse<String>) = Unit
+    protected open fun onResponse(response: RestResponse<*>) = Unit
 
-    protected open fun onDataTransformed(data: T) = Unit
+    protected open fun onDataTransformed(data: O) = Unit
 
-    fun onResponse(callback: (HttpResponse<String>) -> Unit): DefaultRestAction<T> = this.apply {
+    fun onResponse(callback: (RestResponse<*>) -> Unit): DefaultRestAction<I, O> = this.apply {
         responseCallbackDeque.add(callback)
     }
 
-    override fun block(endpoint: Endpoint): Either<RestActionFailure, T> {
-        val response = client.httpClient.send(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString())
+    override fun block(endpoint: Endpoint): Either<RestActionFailure, O> {
+        val response = client.block(buildRestRequest(endpoint.url + requestQuery))
 
         onResponse(response)
         responseCallbackDeque.forEach { it.invoke(response) }
 
-        if (response.statusCode() in 400..599) {
+        if (response.statusCode in 400..599) {
             val failure = ResponseFailure(response)
             failureCallbackDeque.forEach { it.invoke(failure) }
             return Either.Left(failure)
         }
 
-        val content: T = try {
+        val content: O = try {
             val successObject = client.bodyTransformer.read(response, kClass)
             onDataTransformed(successObject)
             successCallbackDeque.forEach { it.invoke(successObject) }
@@ -99,20 +121,20 @@ open class DefaultRestAction<T: Any>(
         return Either.Right(content)
     }
 
-    fun blockOrNull(endpoint: Endpoint): T? = block(endpoint).orNull()
-    fun blockOrDefault(endpoint: Endpoint, defaultValue: T): T = blockOrNull(endpoint) ?: defaultValue
-    fun blockOrHandle(endpoint: Endpoint, callback: (RestActionFailure) -> Unit): T? = block(endpoint).getOrHandle {
+    fun blockOrNull(endpoint: Endpoint): O? = block(endpoint).orNull()
+    fun blockOrDefault(endpoint: Endpoint, defaultValue: O): O = blockOrNull(endpoint) ?: defaultValue
+    fun blockOrHandle(endpoint: Endpoint, callback: (RestActionFailure) -> Unit): O? = block(endpoint).getOrHandle {
         callback(it)
         null
     }
 
-    private fun runAndClearEitherCallbacks(either: Either<RestActionFailure, T>) {
+    private fun runAndClearEitherCallbacks(either: Either<RestActionFailure, O>) {
         eitherCallbackDeque.forEach { it.invoke(either) }
         eitherCallbackDeque.clear()
         isRequestSending.getAndSet(false)
     }
 
-    override fun async(endpoint: Endpoint, callback: (Either<RestActionFailure, T>) -> Unit) {
+    override fun async(endpoint: Endpoint, callback: (Either<RestActionFailure, O>) -> Unit) {
         eitherCallbackDeque.add(callback)
 
         if (isRequestSending.get()) {
@@ -121,8 +143,7 @@ open class DefaultRestAction<T: Any>(
 
         isRequestSending.getAndSet(true)
 
-        client.httpClient.sendAsync(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString()
-        ).whenComplete { response, throwable ->
+        client.async(buildRestRequest(endpoint.url + requestQuery)).whenComplete { response, throwable ->
             try {
                 onResponse(response)
                 responseCallbackDeque.forEach { it.invoke(response) }
@@ -133,7 +154,7 @@ open class DefaultRestAction<T: Any>(
                     return@whenComplete runAndClearEitherCallbacks(Either.Left(failure))
                 }
 
-                if (response.statusCode() in 400..599) {
+                if (response.statusCode in 400..599) {
                     val failure = ResponseFailure(response)
                     failureCallbackDeque.forEach { it.invoke(failure) }
                     return@whenComplete runAndClearEitherCallbacks(Either.Left(failure))
@@ -151,22 +172,15 @@ open class DefaultRestAction<T: Any>(
         }
     }
 
-    override fun asyncFuture(endpoint: Endpoint): CompletableFuture<HttpResponse<String>> {
-        return client.httpClient.sendAsync(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString())
+    override fun asyncFuture(endpoint: Endpoint): CompletableFuture<RestResponse<I>> {
+        return client.async(buildRestRequest(endpoint.url + requestQuery))
     }
 
-    override fun toHttpRequest(url: String, body: T?): HttpRequest {
-        val builder = HttpRequest.newBuilder(URI.create(url + requestQuery))
-            .method(
-                method.name, if (body == null) {
-                    HttpRequest.BodyPublishers.noBody()
-                } else {
-                    HttpRequest.BodyPublishers.ofString(client.bodyTransformer.write(body))
-                }
-            )
-
-        headers.forEach { entry -> builder.header(entry.key, entry.value) }
-
-        return builder.build()
-    }
+    private fun buildRestRequest(url: String): RestRequest = RestRequest(
+        target = URI.create(url),
+        body = body,
+        method = method,
+        headers = headers,
+        requestParameters = requestParameters
+    )
 }

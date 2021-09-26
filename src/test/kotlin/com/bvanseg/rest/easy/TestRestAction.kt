@@ -1,8 +1,9 @@
 package com.bvanseg.rest.easy
 
 import com.bvanseg.rest.easy.action.DefaultRestAction
-import com.bvanseg.rest.easy.client.RestClient
+import com.bvanseg.rest.easy.client.DefaultRestClient
 import com.bvanseg.rest.easy.endpoint.Endpoint
+import com.bvanseg.rest.easy.response.RestResponse
 import com.bvanseg.rest.easy.result.ResponseFailure
 import com.bvanseg.rest.easy.result.ThrowableFailure
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
@@ -22,26 +23,26 @@ class TestRestAction {
 
     private val mapper = jacksonObjectMapper()
 
-    private val jacksonBodyTransformer = object: BodyTransformer {
+    private val jacksonBodyTransformer = object: BodyTransformer<String> {
         @Suppress("UNCHECKED_CAST")
-        override fun <R : Any> read(response: HttpResponse<String>, kclass: KClass<R>): R {
+        override fun <R : Any> read(response: RestResponse<String>, kclass: KClass<R>): R {
             return when {
-                kclass.isSubclassOf(HttpResponse::class) -> response as R
-                kclass.isSubclassOf(String::class) -> response.body() as R
-                else -> mapper.readValue(response.body(), kclass.java)
+                kclass.isSubclassOf(RestResponse::class) -> response as R
+                kclass.isSubclassOf(String::class) -> response.body as R
+                else -> mapper.readValue(response.body, kclass.java)
             }
         }
         override fun <R> write(input: R): String = mapper.writeValueAsString(input)
     }
 
-    private val restClient = RestClient(jacksonBodyTransformer, httpClient)
+    private val restClient = DefaultRestClient<String>(httpClient, HttpResponse.BodyHandlers.ofString(), jacksonBodyTransformer)
 
     private val endpoint = Endpoint("https://www.google.com")
 
     @Test
     fun testRestActionBlockOrNull() {
         // GIVEN
-        val action = DefaultRestAction<String>(
+        val action = DefaultRestAction<String, String>(
             method = HttpMethod.GET,
             requestParameters = mapOf("foo" to "bar"),
             client = restClient
@@ -67,12 +68,12 @@ class TestRestAction {
     @Test
     fun testRestActionHeaderMerge() {
         // GIVEN
-        val firstAction = DefaultRestAction<String>(
+        val firstAction = DefaultRestAction<String, String>(
             method = HttpMethod.GET,
             client = restClient,
             headers = mapOf("foo" to "bar")
         )
-        val secondAction = DefaultRestAction<String>(
+        val secondAction = DefaultRestAction<String, String>(
             method = HttpMethod.GET,
             client = restClient,
             headers = mapOf("foo" to "foobar")

@@ -1,6 +1,6 @@
 package com.bvanseg.rest.easy.result
 
-import java.net.http.HttpResponse
+import com.bvanseg.rest.easy.response.RestResponse
 
 /**
  * @author Boston Vanseghi
@@ -11,7 +11,7 @@ abstract class RestActionFailure
  * @author Boston Vanseghi
  */
 class ResponseFailure(
-    val response: HttpResponse<*>
+    val response: RestResponse<*>
 ) : RestActionFailure()
 
 /**
@@ -19,5 +19,5 @@ class ResponseFailure(
  */
 class ThrowableFailure(
     val throwable: Throwable,
-    val response: HttpResponse<*>? = null
+    val response: RestResponse<*>? = null
 ) : RestActionFailure()
