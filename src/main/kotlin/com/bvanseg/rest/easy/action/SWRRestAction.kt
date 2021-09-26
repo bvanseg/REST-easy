@@ -1,9 +1,9 @@
 package com.bvanseg.rest.easy.action
 
 import arrow.core.Either
-import com.bvanseg.rest.easy.BodyTransformer
-import com.bvanseg.rest.easy.endpoint.Endpoint
 import com.bvanseg.rest.easy.HttpMethod
+import com.bvanseg.rest.easy.client.RestClient
+import com.bvanseg.rest.easy.endpoint.Endpoint
 import com.bvanseg.rest.easy.result.RestActionFailure
 import com.bvanseg.rest.easy.result.ThrowableFailure
 import kotlin.reflect.KClass
@@ -13,22 +13,22 @@ import kotlin.reflect.KClass
  */
 class SWRRestAction<T: Any>(
     override val method: HttpMethod = HttpMethod.GET,
-    override val transformer: BodyTransformer,
+    override val client: RestClient,
     override val requestParameters: Map<String, String> = emptyMap(),
     override val headers: Map<String, String> = emptyMap(),
     private val refreshIntervalMillis: Long = 0L,
     override val kClass: KClass<T>
-): DefaultRestAction<T>(method, transformer, requestParameters, headers, kClass) {
+): DefaultRestAction<T>(method, client, requestParameters, headers, kClass) {
 
     companion object {
         inline operator fun <reified T: Any> invoke(
             method: HttpMethod = HttpMethod.GET,
-            transformer: BodyTransformer,
+            client: RestClient,
             requestParameters: Map<String, String> = emptyMap(),
             headers: Map<String, String> = emptyMap(),
             refreshIntervalMillis: Long = 0L,
         ): SWRRestAction<T> = SWRRestAction(
-            method, transformer, requestParameters, headers, refreshIntervalMillis, T::class
+            method, client, requestParameters, headers, refreshIntervalMillis, T::class
         )
     }
 

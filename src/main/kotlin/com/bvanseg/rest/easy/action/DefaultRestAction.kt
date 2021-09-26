@@ -2,9 +2,9 @@ package com.bvanseg.rest.easy.action
 
 import arrow.core.Either
 import arrow.core.getOrHandle
-import com.bvanseg.rest.easy.BodyTransformer
-import com.bvanseg.rest.easy.endpoint.Endpoint
 import com.bvanseg.rest.easy.HttpMethod
+import com.bvanseg.rest.easy.client.RestClient
+import com.bvanseg.rest.easy.endpoint.Endpoint
 import com.bvanseg.rest.easy.result.ResponseFailure
 import com.bvanseg.rest.easy.result.RestActionFailure
 import com.bvanseg.rest.easy.result.ThrowableFailure
@@ -21,7 +21,7 @@ import kotlin.reflect.KClass
  */
 open class DefaultRestAction<T: Any>(
     override val method: HttpMethod = HttpMethod.GET,
-    override val transformer: BodyTransformer,
+    override val client: RestClient,
     override val requestParameters: Map<String, String> = emptyMap(),
     override val headers: Map<String, String> = emptyMap(),
     override val kClass: KClass<T>
@@ -30,22 +30,22 @@ open class DefaultRestAction<T: Any>(
     companion object {
         inline operator fun <reified T: Any> invoke(
             method: HttpMethod = HttpMethod.GET,
-            transformer: BodyTransformer,
+            client: RestClient,
             requestParameters: Map<String, String> = emptyMap(),
             headers: Map<String, String> = emptyMap(),
         ): DefaultRestAction<T> = DefaultRestAction(
-            method, transformer, requestParameters, headers, T::class
+            method, client, requestParameters, headers, T::class
         )
 
         inline operator fun <reified T: Any> invoke(
             action: RestAction<*>
         ): DefaultRestAction<T> = DefaultRestAction(
-            action.method, action.transformer, action.requestParameters, action.headers, T::class
+            action.method, action.client, action.requestParameters, action.headers, T::class
         )
     }
 
     constructor(action: RestAction<T>):
-            this(action.method, action.transformer, action.requestParameters, action.headers, action.kClass)
+            this(action.method, action.client, action.requestParameters, action.headers, action.kClass)
 
     private val requestQuery: String
         get() = "?" + requestParameters.entries.joinToString("&")
@@ -74,7 +74,7 @@ open class DefaultRestAction<T: Any>(
     }
 
     override fun block(endpoint: Endpoint): Either<RestActionFailure, T> {
-        val response = endpoint.client.send(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString())
+        val response = client.httpClient.send(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString())
 
         onResponse(response)
         responseCallbackDeque.forEach { it.invoke(response) }
@@ -86,7 +86,7 @@ open class DefaultRestAction<T: Any>(
         }
 
         val content: T = try {
-            val successObject = transformer.read(response, kClass)
+            val successObject = client.bodyTransformer.read(response, kClass)
             onDataTransformed(successObject)
             successCallbackDeque.forEach { it.invoke(successObject) }
             successObject
@@ -121,7 +121,7 @@ open class DefaultRestAction<T: Any>(
 
         isRequestSending.getAndSet(true)
 
-        endpoint.client.sendAsync(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString()
+        client.httpClient.sendAsync(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString()
         ).whenComplete { response, throwable ->
             try {
                 onResponse(response)
@@ -139,7 +139,7 @@ open class DefaultRestAction<T: Any>(
                     return@whenComplete runAndClearEitherCallbacks(Either.Left(failure))
                 }
 
-                val successObject = transformer.read(response, kClass)
+                val successObject = client.bodyTransformer.read(response, kClass)
                 onDataTransformed(successObject)
                 successCallbackDeque.forEach { it.invoke(successObject) }
                 return@whenComplete runAndClearEitherCallbacks(Either.Right(successObject))
@@ -152,7 +152,7 @@ open class DefaultRestAction<T: Any>(
     }
 
     override fun asyncFuture(endpoint: Endpoint): CompletableFuture<HttpResponse<String>> {
-        return endpoint.client.sendAsync(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString())
+        return client.httpClient.sendAsync(toHttpRequest(endpoint.url + requestQuery), HttpResponse.BodyHandlers.ofString())
     }
 
     override fun toHttpRequest(url: String, body: T?): HttpRequest {
@@ -161,7 +161,7 @@ open class DefaultRestAction<T: Any>(
                 method.name, if (body == null) {
                     HttpRequest.BodyPublishers.noBody()
                 } else {
-                    HttpRequest.BodyPublishers.ofString(transformer.write(body))
+                    HttpRequest.BodyPublishers.ofString(client.bodyTransformer.write(body))
                 }
             )
 

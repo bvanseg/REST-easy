@@ -1,14 +1,17 @@
 package com.bvanseg.rest.easy
 
 import com.bvanseg.rest.easy.action.DefaultRestAction
+import com.bvanseg.rest.easy.client.RestClient
 import com.bvanseg.rest.easy.endpoint.Endpoint
+import com.bvanseg.rest.easy.result.ResponseFailure
+import com.bvanseg.rest.easy.result.ThrowableFailure
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import java.net.http.HttpClient
-import kotlin.reflect.KClass
-import kotlin.reflect.full.isSubclassOf
 import org.junit.Assert
 import org.junit.Test
+import java.net.http.HttpClient
 import java.net.http.HttpResponse
+import kotlin.reflect.KClass
+import kotlin.reflect.full.isSubclassOf
 
 /**
  * @author Boston Vanseghi
@@ -31,7 +34,9 @@ class TestRestAction {
         override fun <R> write(input: R): String = mapper.writeValueAsString(input)
     }
 
-    private val endpoint = Endpoint("https://www.google.com", httpClient)
+    private val restClient = RestClient(jacksonBodyTransformer, httpClient)
+
+    private val endpoint = Endpoint("https://www.google.com")
 
     @Test
     fun testRestActionBlockOrNull() {
@@ -39,8 +44,17 @@ class TestRestAction {
         val action = DefaultRestAction<String>(
             method = HttpMethod.GET,
             requestParameters = mapOf("foo" to "bar"),
-            transformer = jacksonBodyTransformer
-        )
+            client = restClient
+        ).onSuccess { str ->
+            println(str)
+        }.onFailure { failure ->
+            when (failure) {
+                is ThrowableFailure -> failure.throwable.printStackTrace()
+                is ResponseFailure -> println(failure.response)
+            }
+        }.onResponse { response ->
+            // Handle response manually...
+        }
 
         // WHEN
 
@@ -55,12 +69,12 @@ class TestRestAction {
         // GIVEN
         val firstAction = DefaultRestAction<String>(
             method = HttpMethod.GET,
-            transformer = jacksonBodyTransformer,
+            client = restClient,
             headers = mapOf("foo" to "bar")
         )
         val secondAction = DefaultRestAction<String>(
             method = HttpMethod.GET,
-            transformer = jacksonBodyTransformer,
+            client = restClient,
             headers = mapOf("foo" to "foobar")
         )
 

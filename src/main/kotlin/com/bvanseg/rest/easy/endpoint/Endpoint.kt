@@ -1,8 +1,8 @@
 package com.bvanseg.rest.easy.endpoint
 
-import java.net.http.HttpClient
-
 /**
  * @author Boston Vanseghi
  */
-class Endpoint(val url: String, val client: HttpClient)
+open class Endpoint(val url: String) {
+    fun subPath(path: String): Endpoint = Endpoint(url + path)
+}
