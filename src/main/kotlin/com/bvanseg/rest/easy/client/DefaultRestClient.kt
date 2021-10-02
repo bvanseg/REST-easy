@@ -20,13 +20,13 @@ class DefaultRestClient<I>(
     override fun block(request: RestRequest): RestResponse<I> {
         val httpRequest = toHttpRequest(request)
         val httpResponse = httpClient.send(httpRequest, bodyHandler)
-        return RestResponse(httpResponse.body(), httpResponse.statusCode())
+        return RestResponse(httpResponse.body(), httpResponse.statusCode(), httpResponse)
     }
 
     override fun async(request: RestRequest): CompletableFuture<RestResponse<I>> {
         val httpRequest = toHttpRequest(request)
         return httpClient.sendAsync(httpRequest, bodyHandler).thenApplyAsync { httpResponse ->
-            return@thenApplyAsync RestResponse(httpResponse.body(), httpResponse.statusCode())
+            return@thenApplyAsync RestResponse(httpResponse.body(), httpResponse.statusCode(), httpResponse)
         }
     }
 

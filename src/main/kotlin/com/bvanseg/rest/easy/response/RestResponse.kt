@@ -5,5 +5,6 @@ package com.bvanseg.rest.easy.response
  */
 data class RestResponse<T>(
     val body: T,
-    val statusCode: Int
+    val statusCode: Int,
+    val sourceResponse: Any
 )
