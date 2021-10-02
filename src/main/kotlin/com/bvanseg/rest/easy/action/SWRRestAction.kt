@@ -34,6 +34,16 @@ class SWRRestAction<I, O: Any>(
         )
     }
 
+    constructor(action: DefaultRestAction<I, O>, refreshIntervalMillis: Long): this(
+        action.method,
+        action.client,
+        action.body,
+        action.requestParameters,
+        action.headers,
+        refreshIntervalMillis,
+        action.kClass
+    )
+
     @Volatile
     var data: O? = null
         set(value) {

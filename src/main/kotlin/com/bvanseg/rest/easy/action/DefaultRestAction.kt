@@ -141,6 +141,9 @@ open class DefaultRestAction<I, O: Any>(
         null
     }
 
+    fun toSWRRestAction(refreshIntervalInMillis: Long): SWRRestAction<I, O> =
+        SWRRestAction(this, refreshIntervalInMillis)
+
     private fun runAndClearEitherCallbacks(either: Either<RestActionFailure, O>) {
         eitherCallbackDeque.forEach { it.invoke(either) }
         eitherCallbackDeque.clear()
