@@ -12,7 +12,7 @@ import com.bvanseg.rest.easy.result.RestActionFailure
 import com.bvanseg.rest.easy.result.ThrowableFailure
 import java.net.URI
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.reflect.KClass
 
@@ -85,10 +85,10 @@ open class DefaultRestAction<I, O: Any>(
     private val requestQuery: String
         get() = "?" + requestParameters.entries.joinToString("&")
 
-    protected val eitherCallbackDeque by lazy { ConcurrentLinkedDeque<(Either<RestActionFailure, O>) -> Unit>() }
-    protected val failureCallbackDeque by lazy { ConcurrentLinkedDeque<(RestActionFailure) -> Unit>() }
-    protected val responseCallbackDeque by lazy { ConcurrentLinkedDeque<(RestResponse<*>) -> Unit>() }
-    protected val successCallbackDeque by lazy { ConcurrentLinkedDeque<(O) -> Unit>() }
+    protected val eitherCallbackDeque by lazy { ConcurrentLinkedQueue<(Either<RestActionFailure, O>) -> Unit>() }
+    protected val failureCallbackDeque by lazy { ConcurrentLinkedQueue<(RestActionFailure) -> Unit>() }
+    protected val responseCallbackDeque by lazy { ConcurrentLinkedQueue<(RestResponse<*>) -> Unit>() }
+    protected val successCallbackDeque by lazy { ConcurrentLinkedQueue<(O) -> Unit>() }
 
     protected val isRequestSending = AtomicBoolean(false)
 
