@@ -59,6 +59,19 @@ open class DefaultRestAction<I, O: Any>(
 
     constructor(
         client: RestClient<I>,
+        restRequest: RestRequest,
+        kClass: KClass<O>
+    ): this(
+        method = restRequest.method,
+        client = client,
+        body = restRequest.body,
+        requestParameters = restRequest.requestParameters,
+        headers = restRequest.headers,
+        kClass = kClass
+    )
+
+    constructor(
+        client: RestClient<I>,
         action: RestAction<O>
     ): this(
         method = action.method,
